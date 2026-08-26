@@ -7,11 +7,14 @@
 import {
   loadGoogleFont,
   loadFontFile,
-  populateFontSelect,
+  loadAllGoogleFontsCSS,
+  buildCustomFontDropdown,
+  initCloseDropdowns,
   addUploadedFontToSelect,
   getFont,
   renderPreview,
   fontCache,
+  GOOGLE_FONTS,
 } from './font-loader.js';
 
 import {
@@ -38,6 +41,8 @@ const state = {
 const $ = id => document.getElementById(id);
 const fontASelect = $('font-a-select');
 const fontBSelect = $('font-b-select');
+const fontAWrap = $('font-a-wrap');
+const fontBWrap = $('font-b-wrap');
 const fontAFile = $('font-a-file');
 const fontBFile = $('font-b-file');
 const previewA = $('preview-a');
@@ -70,9 +75,13 @@ const valSmooth = $('val-smooth');
 // ─── INITIALIZATION ─────────────────────────────────────────────
 
 function init() {
-  // Populate font dropdowns
-  populateFontSelect(fontASelect);
-  populateFontSelect(fontBSelect);
+  // Load all Google Fonts CSS for styled dropdown display
+  loadAllGoogleFontsCSS(GOOGLE_FONTS);
+
+  // Build custom font-styled dropdowns
+  buildCustomFontDropdown(fontAWrap, fontASelect, GOOGLE_FONTS);
+  buildCustomFontDropdown(fontBWrap, fontBSelect, GOOGLE_FONTS);
+  initCloseDropdowns();
 
   // Event listeners
   fontASelect.addEventListener('change', () => handleFontSelectChange('a'));
@@ -139,6 +148,7 @@ async function handleFileUpload(side, event) {
   if (!file) return;
 
   const select = side === 'a' ? fontASelect : fontBSelect;
+  const wrap = side === 'a' ? fontAWrap : fontBWrap;
   const preview = side === 'a' ? previewA : previewB;
 
   showStatus(`Parsing ${file.name}...`);
@@ -154,7 +164,7 @@ async function handleFileUpload(side, event) {
       state.fontBKey = cacheKey;
     }
 
-    addUploadedFontToSelect(select, cacheKey, fontData.family);
+    addUploadedFontToSelect(wrap, select, cacheKey, fontData.family);
     renderPreview(fontData, preview);
 
     showStatus(`Loaded: ${file.name} (${fontData.family})`);

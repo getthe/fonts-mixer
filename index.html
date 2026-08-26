@@ -19,9 +19,16 @@
       <div class="font-panel" id="panel-a">
         <h2>Font A</h2>
         <div class="select-row">
-          <select id="font-a-select" class="font-select">
-            <option value="">— Select a font —</option>
-          </select>
+          <div class="custom-font-select" id="font-a-wrap">
+            <div class="font-select-trigger">
+              <span class="font-select-text">— Select a font —</span>
+              <span class="font-select-chevron">&#9662;</span>
+            </div>
+            <select id="font-a-select" class="font-select" style="display:none">
+              <option value="">— Select a font —</option>
+            </select>
+            <div class="font-options-list"></div>
+          </div>
           <label class="upload-btn" title="Upload custom .ttf or .otf">
             <input type="file" id="font-a-file" accept=".ttf,.otf,.woff" hidden>
             Upload
@@ -40,9 +47,16 @@
       <div class="font-panel" id="panel-b">
         <h2>Font B</h2>
         <div class="select-row">
-          <select id="font-b-select" class="font-select">
-            <option value="">— Select a font —</option>
-          </select>
+          <div class="custom-font-select" id="font-b-wrap">
+            <div class="font-select-trigger">
+              <span class="font-select-text">— Select a font —</span>
+              <span class="font-select-chevron">&#9662;</span>
+            </div>
+            <select id="font-b-select" class="font-select" style="display:none">
+              <option value="">— Select a font —</option>
+            </select>
+            <div class="font-options-list"></div>
+          </div>
           <label class="upload-btn" title="Upload custom .ttf or .otf">
             <input type="file" id="font-b-file" accept=".ttf,.otf,.woff" hidden>
             Upload

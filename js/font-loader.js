@@ -79,21 +79,107 @@ async function loadFontFile(file) {
 }
 
 /**
- * Populate a <select> element with Google Fonts options.
+ * Batch-load all Google Fonts CSS so each font name renders
+ * in its own typeface within the dropdown.
  */
-function populateFontSelect(selectEl) {
-  GOOGLE_FONTS.forEach(name => {
+function loadAllGoogleFontsCSS(fontList) {
+  const batchSize = 8;
+  for (let i = 0; i < fontList.length; i += batchSize) {
+    const batch = fontList.slice(i, i + batchSize);
+    const families = batch.map(f => `family=${encodeURIComponent(f)}:wght@400`).join('&');
+    const id = `gfont-batch-${i}`;
+    if (!document.getElementById(id)) {
+      const link = document.createElement('link');
+      link.id = id;
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?${families}&display=swap`;
+      document.head.appendChild(link);
+    }
+  }
+}
+
+/**
+ * Build a custom font dropdown where each option is rendered
+ * in its matching font style.
+ */
+function buildCustomFontDropdown(wrapEl, selectEl, fontList) {
+  const optionsList = wrapEl.querySelector('.font-options-list');
+  const triggerText = wrapEl.querySelector('.font-select-text');
+  const trigger = wrapEl.querySelector('.font-select-trigger');
+
+  // Build styled options
+  fontList.forEach(name => {
+    // Add to hidden select
     const opt = document.createElement('option');
     opt.value = name;
     opt.textContent = name;
     selectEl.appendChild(opt);
+
+    // Build visible styled option
+    const optDiv = document.createElement('div');
+    optDiv.className = 'font-option';
+    optDiv.dataset.value = name;
+    optDiv.textContent = name;
+    optDiv.style.fontFamily = `"${name}", sans-serif`;
+    optionsList.appendChild(optDiv);
+
+    // Click to select
+    optDiv.addEventListener('click', () => {
+      selectEl.value = name;
+      triggerText.textContent = name;
+      triggerText.style.fontFamily = `"${name}", sans-serif`;
+
+      // Update selected state
+      optionsList.querySelectorAll('.font-option').forEach(o => o.classList.remove('selected'));
+      optDiv.classList.add('selected');
+
+      // Close dropdown
+      wrapEl.classList.remove('open');
+      trigger.classList.remove('active');
+
+      // Dispatch change event so app.js handlers fire
+      selectEl.dispatchEvent(new Event('change'));
+    });
+  });
+
+  // Toggle dropdown open/close
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = wrapEl.classList.contains('open');
+
+    // Close all other dropdowns first
+    document.querySelectorAll('.custom-font-select.open').forEach(el => {
+      el.classList.remove('open');
+      el.querySelector('.font-select-trigger').classList.remove('active');
+    });
+
+    if (!isOpen) {
+      wrapEl.classList.add('open');
+      trigger.classList.add('active');
+    }
   });
 }
 
 /**
- * Add a custom uploaded font to a select element.
+ * Close all custom dropdowns when clicking outside.
  */
-function addUploadedFontToSelect(selectEl, cacheKey, displayName) {
+function initCloseDropdowns() {
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.custom-font-select.open').forEach(el => {
+      el.classList.remove('open');
+      el.querySelector('.font-select-trigger').classList.remove('active');
+    });
+  });
+}
+
+/**
+ * Add a custom uploaded font to the dropdown.
+ */
+function addUploadedFontToSelect(wrapEl, selectEl, cacheKey, displayName) {
+  const optionsList = wrapEl.querySelector('.font-options-list');
+  const triggerText = wrapEl.querySelector('.font-select-text');
+
+  // Add to hidden select
   const opt = document.createElement('option');
   opt.value = cacheKey;
   opt.textContent = `${displayName} (uploaded)`;
@@ -103,6 +189,32 @@ function addUploadedFontToSelect(selectEl, cacheKey, displayName) {
   } else {
     selectEl.appendChild(opt);
   }
+
+  // Add styled option to visible list
+  const optDiv = document.createElement('div');
+  optDiv.className = 'font-option selected';
+  optDiv.dataset.value = cacheKey;
+  optDiv.textContent = `${displayName} (uploaded)`;
+  optDiv.style.fontFamily = `"${displayName}", sans-serif`;
+  optionsList.insertBefore(optDiv, optionsList.firstChild);
+
+  optDiv.addEventListener('click', () => {
+    selectEl.value = cacheKey;
+    triggerText.textContent = `${displayName} (uploaded)`;
+    triggerText.style.fontFamily = `"${displayName}", sans-serif`;
+    optionsList.querySelectorAll('.font-option').forEach(o => o.classList.remove('selected'));
+    optDiv.classList.add('selected');
+    wrapEl.classList.remove('open');
+    wrapEl.querySelector('.font-select-trigger').classList.remove('active');
+    selectEl.dispatchEvent(new Event('change'));
+  });
+
+  // Auto-select it
+  selectEl.value = cacheKey;
+  triggerText.textContent = `${displayName} (uploaded)`;
+  triggerText.style.fontFamily = `"${displayName}", sans-serif`;
+  optionsList.querySelectorAll('.font-option').forEach(o => o.classList.remove('selected'));
+  optDiv.classList.add('selected');
 }
 
 /**
@@ -147,7 +259,9 @@ export {
   GOOGLE_FONTS,
   loadGoogleFont,
   loadFontFile,
-  populateFontSelect,
+  loadAllGoogleFontsCSS,
+  buildCustomFontDropdown,
+  initCloseDropdowns,
   addUploadedFontToSelect,
   getFont,
   renderPreview,
