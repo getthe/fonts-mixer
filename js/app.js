@@ -19,6 +19,7 @@ import {
   renderInterpolatedText,
   renderGlyphCell,
   createCssOverlay,
+  interpolateGlyph,
 } from './font-mixer.js';
 
 // ─── STATE ──────────────────────────────────────────────────────
@@ -47,6 +48,9 @@ const sampleText = $('sample-text');
 const outputPreview = $('output-preview');
 const outputGlyphs = $('output-glyphs');
 const statusBar = $('status-bar');
+const saveGroup = $('save-group');
+const saveBtn = $('save-btn');
+const saveDropdown = $('save-dropdown');
 
 // Parameter inputs
 const paramRatio = $('param-ratio');
@@ -78,6 +82,12 @@ function init() {
 
   mixBtn.addEventListener('click', doMix);
   remixBtn.addEventListener('click', doMix);
+
+  // Save dropdown toggle
+  saveBtn.addEventListener('click', () => saveGroup.classList.toggle('open'));
+  document.addEventListener('click', e => {
+    if (!saveGroup.contains(e.target)) saveGroup.classList.remove('open');
+  });
   sampleText.addEventListener('input', () => {
     if (state.lastParams) doMix();
   });
@@ -238,6 +248,7 @@ async function doMix() {
     }
 
     remixBtn.disabled = false;
+    saveGroup.style.display = 'inline-block';
     showStatus(`Mix complete: ${state.fontA.family} + ${state.fontB.family} (${Math.round(ratio * 100)}% blend)`);
     setTimeout(hideStatus, 3000);
 
@@ -249,6 +260,225 @@ async function doMix() {
   state.isMixing = false;
   document.body.classList.remove('mixing');
 }
+
+// ─── EXPORT / SAVE FUNCTIONS ─────────────────────────────────────
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function getMixFilename(ext) {
+  const a = state.fontA?.family || 'fontA';
+  const b = state.fontB?.family || 'fontB';
+  const ratio = paramRatio.value;
+  return `${a}_${b}_mix${ratio}.${ext}`;
+}
+
+/**
+ * Export the mixed preview as a PNG image.
+ * Works with all mixing modes.
+ */
+function exportAsPNG() {
+  saveGroup.classList.remove('open');
+
+  // Try to find a canvas in the preview
+  const canvas = outputPreview.querySelector('canvas');
+  if (canvas) {
+    canvas.toBlob(blob => {
+      if (blob) {
+        downloadBlob(blob, getMixFilename('png'));
+        showStatus('Saved as PNG');
+        setTimeout(hideStatus, 3000);
+      }
+    });
+    return;
+  }
+
+  // For CSS overlay mode — render to a temp canvas
+  const overlay = outputPreview.querySelector('.css-overlay-container');
+  if (overlay) {
+    const text = sampleText.value || 'The quick brown fox jumps over the lazy dog';
+    const ratio = parseInt(paramRatio.value) / 100;
+    const fontSize = 48;
+    const widthStretch = parseInt(paramWidth.value) / 100;
+    const spacing = parseInt(paramSpacing.value);
+    const canvas2 = canvasBlendText(state.fontA, state.fontB, text, fontSize, ratio, { widthStretch, spacing });
+    canvas2.toBlob(blob => {
+      if (blob) {
+        downloadBlob(blob, getMixFilename('png'));
+        showStatus('Saved as PNG');
+        setTimeout(hideStatus, 3000);
+      }
+    });
+    return;
+  }
+
+  showStatus('No mixed output to save — run a mix first');
+  setTimeout(hideStatus, 3000);
+}
+
+/**
+ * Export mixed glyphs as an SVG vector file.
+ */
+function exportAsSVG() {
+  saveGroup.classList.remove('open');
+  if (!state.fontA || !state.fontB) return;
+
+  const text = sampleText.value || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const ratio = parseInt(paramRatio.value) / 100;
+  const fontSize = 200;
+  const hasOpentype = state.fontA.opentype && state.fontB.opentype;
+
+  let svgContent = '';
+  let totalWidth = 0;
+  const charElements = [];
+
+  for (const char of text) {
+    if (char === ' ') { totalWidth += fontSize * 0.3; continue; }
+
+    if (hasOpentype) {
+      const path = interpolateGlyph(state.fontA, state.fontB, char, fontSize, ratio);
+      if (path) {
+        let d = '';
+        for (const cmd of path.commands) {
+          switch (cmd.type) {
+            case 'M': d += `M${cmd.x} ${cmd.y}`; break;
+            case 'L': d += `L${cmd.x} ${cmd.y}`; break;
+            case 'Q': d += `Q${cmd.x1} ${cmd.y1} ${cmd.x} ${cmd.y}`; break;
+            case 'C': d += `C${cmd.x1} ${cmd.y1} ${cmd.x2} ${cmd.y2} ${cmd.x} ${cmd.y}`; break;
+            case 'Z': d += 'Z'; break;
+          }
+        }
+        charElements.push(`<g transform="translate(${totalWidth},0)"><path d="${d}" fill="black"/></g>`);
+      }
+    } else {
+      charElements.push(`<text x="${totalWidth}" y="${fontSize}" font-size="${fontSize}" font-family="${state.fontA.family}">${char === '&' ? '&amp;' : char === '<' ? '&lt;' : char}</text>`);
+    }
+    totalWidth += fontSize * 0.6;
+  }
+
+  const svgHeight = fontSize * 1.4;
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${Math.ceil(totalWidth + 40)} ${Math.ceil(svgHeight)}" width="${Math.ceil(totalWidth + 40)}" height="${Math.ceil(svgHeight)}">
+  <!-- fontMixer: ${state.fontA.family} + ${state.fontB.family} (${Math.round(ratio * 100)}% blend) -->
+  <g transform="translate(20, 0)">
+    ${charElements.join('\n    ')}
+  </g>
+</svg>`;
+
+  const blob = new Blob([svg], { type: 'image/svg+xml' });
+  downloadBlob(blob, getMixFilename('svg'));
+  showStatus('Saved as SVG vector');
+  setTimeout(hideStatus, 3000);
+}
+
+/**
+ * Export a real .ttf font file using opentype.js.
+ * Requires both source fonts to be uploaded .ttf/.otf files.
+ */
+function exportAsTTF() {
+  saveGroup.classList.remove('open');
+
+  if (!state.fontA?.opentype || !state.fontB?.opentype) {
+    showStatus('TTF export requires both fonts to be uploaded .ttf/.otf files (Google Fonts cannot be repackaged)');
+    setTimeout(hideStatus, 5000);
+    return;
+  }
+
+  if (typeof opentype === 'undefined') {
+    showStatus('opentype.js not available');
+    setTimeout(hideStatus, 3000);
+    return;
+  }
+
+  showStatus('Building TTF font file...');
+
+  const ratio = parseInt(paramRatio.value) / 100;
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?\'-;:';
+  const unitsPerEm = state.fontA.opentype.unitsPerEm || 1000;
+
+  const notdefGlyph = new opentype.Glyph({
+    name: '.notdef',
+    unicode: 0,
+    advanceWidth: unitsPerEm * 0.5,
+    path: new opentype.Path(),
+  });
+
+  const glyphs = [notdefGlyph];
+
+  for (const char of chars) {
+    try {
+      const path = interpolateGlyph(state.fontA, state.fontB, char, unitsPerEm, ratio);
+      if (path && path.commands && path.commands.length > 0) {
+        // Flip Y axis (opentype fonts use Y-up coordinate system)
+        const flippedCmds = path.commands.map(cmd => {
+          const nc = { type: cmd.type };
+          if (cmd.x !== undefined) nc.x = cmd.x;
+          if (cmd.y !== undefined) nc.y = -cmd.y;
+          if (cmd.x1 !== undefined) nc.x1 = cmd.x1;
+          if (cmd.y1 !== undefined) nc.y1 = -cmd.y1;
+          if (cmd.x2 !== undefined) nc.x2 = cmd.x2;
+          if (cmd.y2 !== undefined) nc.y2 = -cmd.y2;
+          return nc;
+        });
+
+        const opPath = new opentype.Path();
+        for (const cmd of flippedCmds) {
+          switch (cmd.type) {
+            case 'M': opPath.moveTo(cmd.x, cmd.y); break;
+            case 'L': opPath.lineTo(cmd.x, cmd.y); break;
+            case 'Q': opPath.quadraticCurveTo(cmd.x1, cmd.y1, cmd.x, cmd.y); break;
+            case 'C': opPath.bezierCurveTo(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y); break;
+            case 'Z': opPath.close(); break;
+          }
+        }
+
+        const glyph = new opentype.Glyph({
+          name: char === ' ' ? 'space' : `uni${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`,
+          unicode: char.charCodeAt(0),
+          advanceWidth: Math.round(unitsPerEm * 0.6),
+          path: opPath,
+        });
+        glyphs.push(glyph);
+      }
+    } catch {
+      // Skip characters that fail
+    }
+  }
+
+  try {
+    const mixedFont = new opentype.Font({
+      familyName: `${state.fontA.family}${state.fontB.family}Mix`,
+      styleName: 'Regular',
+      unitsPerEm: unitsPerEm,
+      ascender: unitsPerEm * 0.8,
+      descender: unitsPerEm * -0.2,
+      glyphs: glyphs,
+    });
+
+    const buffer = mixedFont.toArrayBuffer();
+    const blob = new Blob([buffer], { type: 'font/ttf' });
+    downloadBlob(blob, getMixFilename('ttf'));
+    showStatus(`Saved TTF with ${glyphs.length - 1} mixed glyphs`);
+    setTimeout(hideStatus, 4000);
+  } catch (err) {
+    showStatus(`TTF export error: ${err.message}`);
+    console.error('TTF export error:', err);
+    setTimeout(hideStatus, 5000);
+  }
+}
+
+// Make export functions available globally for onclick handlers
+window.exportAsPNG = exportAsPNG;
+window.exportAsSVG = exportAsSVG;
+window.exportAsTTF = exportAsTTF;
 
 // ─── STATUS BAR ─────────────────────────────────────────────────
 

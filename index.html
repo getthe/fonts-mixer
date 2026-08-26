@@ -97,6 +97,14 @@
       <div class="output-header">
         <h3>Mixed Output</h3>
         <div class="output-actions">
+          <div class="save-group" id="save-group" style="display:none">
+            <button id="save-btn" class="btn-small btn-save">&#128190; Save Mixed Font</button>
+            <div class="save-dropdown" id="save-dropdown">
+              <button class="save-option" onclick="exportAsPNG()">&#128444; Save as PNG image</button>
+              <button class="save-option" onclick="exportAsSVG()">&#9998; Save as SVG vector</button>
+              <button class="save-option" id="save-ttf-btn" onclick="exportAsTTF()">&#128196; Save as TTF font <span class="save-hint">(needs uploaded .ttf)</span></button>
+            </div>
+          </div>
           <button id="remix-btn" class="btn-small" disabled>Remix</button>
         </div>
       </div>

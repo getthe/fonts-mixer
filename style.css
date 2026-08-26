@@ -267,6 +267,53 @@ header h1 {
 .btn-small:hover:not(:disabled) { opacity: 0.85; }
 .btn-small:disabled { opacity: 0.3; cursor: not-allowed; }
 
+/* Save dropdown */
+.save-group {
+  position: relative;
+  display: inline-block;
+}
+.btn-save {
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  font-weight: 600;
+}
+.save-dropdown {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  z-index: 50;
+  min-width: 220px;
+  overflow: hidden;
+}
+.save-group.open .save-dropdown {
+  display: block;
+}
+.save-option {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  text-align: left;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.save-option:hover {
+  background: var(--surface-light);
+}
+.save-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
 .output-text-input {
   margin-bottom: 12px;
 }
