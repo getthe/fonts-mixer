@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>fontMixer — Create Hybrid Fonts</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- HEADER -->
+    <header>
+      <h1><span class="logo">fM</span> fontMixer</h1>
+      <span class="tagline">Blend two fonts into a new hybrid</span>
+    </header>
+
+    <!-- FONT INPUT PANELS -->
+    <section class="input-panels">
+      <div class="font-panel" id="panel-a">
+        <h2>Font A</h2>
+        <div class="select-row">
+          <select id="font-a-select" class="font-select">
+            <option value="">— Select a font —</option>
+          </select>
+          <label class="upload-btn" title="Upload custom .ttf or .otf">
+            <input type="file" id="font-a-file" accept=".ttf,.otf,.woff" hidden>
+            Upload
+          </label>
+        </div>
+        <div class="preview-sample" id="preview-a">AaBbCcDd</div>
+      </div>
+
+      <div class="mix-controls">
+        <button id="mix-btn" class="mix-btn" disabled>
+          <span class="mix-icon">&#x2697;</span>
+          Try Mix
+        </button>
+      </div>
+
+      <div class="font-panel" id="panel-b">
+        <h2>Font B</h2>
+        <div class="select-row">
+          <select id="font-b-select" class="font-select">
+            <option value="">— Select a font —</option>
+          </select>
+          <label class="upload-btn" title="Upload custom .ttf or .otf">
+            <input type="file" id="font-b-file" accept=".ttf,.otf,.woff" hidden>
+            Upload
+          </label>
+        </div>
+        <div class="preview-sample" id="preview-b">AaBbCcDd</div>
+      </div>
+    </section>
+
+    <!-- MIXING PARAMETERS -->
+    <section class="params-panel" id="params-panel">
+      <h3>Mixing Parameters</h3>
+      <div class="params-grid">
+        <div class="param">
+          <label>Mix Ratio <span class="param-val" id="val-ratio">50%</span></label>
+          <input type="range" id="param-ratio" min="0" max="100" value="50">
+          <div class="param-labels"><span>Font A</span><span>Font B</span></div>
+        </div>
+        <div class="param">
+          <label>Weight Blend <span class="param-val" id="val-weight">50%</span></label>
+          <input type="range" id="param-weight" min="0" max="100" value="50">
+          <div class="param-labels"><span>Thin</span><span>Bold</span></div>
+        </div>
+        <div class="param">
+          <label>Width Stretch <span class="param-val" id="val-width">100%</span></label>
+          <input type="range" id="param-width" min="50" max="200" value="100">
+          <div class="param-labels"><span>Condensed</span><span>Expanded</span></div>
+        </div>
+        <div class="param">
+          <label>Spacing <span class="param-val" id="val-spacing">0px</span></label>
+          <input type="range" id="param-spacing" min="-10" max="30" value="0">
+          <div class="param-labels"><span>Tight</span><span>Loose</span></div>
+        </div>
+        <div class="param">
+          <label>Smoothness <span class="param-val" id="val-smooth">0%</span></label>
+          <input type="range" id="param-smooth" min="0" max="100" value="0">
+          <div class="param-labels"><span>Sharp</span><span>Smooth</span></div>
+        </div>
+        <div class="param">
+          <label>Blend Mode</label>
+          <select id="param-mode" class="mode-select">
+            <option value="glyph-interp">Glyph Interpolation</option>
+            <option value="canvas-blend">Canvas Blend</option>
+            <option value="css-overlay">CSS Overlay</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- OUTPUT PREVIEW -->
+    <section class="output-panel" id="output-panel">
+      <div class="output-header">
+        <h3>Mixed Output</h3>
+        <div class="output-actions">
+          <button id="remix-btn" class="btn-small" disabled>Remix</button>
+        </div>
+      </div>
+      <div class="output-text-input">
+        <input type="text" id="sample-text" placeholder="Type preview text here..." value="The quick brown fox jumps over the lazy dog">
+      </div>
+      <div class="output-preview" id="output-preview">
+        <div class="empty-state">Select two fonts and click <strong>Try Mix</strong> to begin</div>
+      </div>
+      <div class="output-glyphs" id="output-glyphs"></div>
+    </section>
+
+    <!-- STATUS BAR -->
+    <div class="status-bar" id="status-bar"></div>
+  </div>
+
+  <!-- opentype.js for font parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js" crossorigin="anonymous"></script>
+  <script type="module" src="js/font-loader.js"></script>
+  <script type="module" src="js/font-mixer.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
