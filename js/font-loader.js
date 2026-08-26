@@ -1,7 +1,10 @@
 /**
  * font-loader.js
  * Handles loading fonts from Google Fonts and user file uploads.
- * Parses fonts using opentype.js for glyph-level access.
+ *
+ * Google Fonts are loaded via CSS <link> tag (no CORS issues).
+ * Opentype.js parsing is used only for uploaded .ttf/.otf files
+ * (enables glyph-level interpolation).
  */
 
 // Curated Google Fonts list (popular, diverse set for mixing)
@@ -18,85 +21,40 @@ const GOOGLE_FONTS = [
   'Bebas Neue', 'Abril Fatface', 'Righteous', 'Permanent Marker',
 ];
 
-// Cache loaded font objects: { name: { opentype, family, url } }
+// Cache loaded font objects: { name: { opentype?, family, source } }
 const fontCache = {};
 
 /**
- * Fetch the Google Fonts CSS with a TTF-compatible user-agent
- * and parse out the actual font file URLs.
+ * Load a Google Font by injecting a CSS <link> tag.
+ * This avoids all CORS issues and makes the font available
+ * for CSS font-family and canvas fillText immediately.
+ * Returns synchronously so the mix button enables right away.
  */
-async function fetchGoogleFontUrls(fontName) {
-  const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName)}:wght@100;300;400;500;700;900`;
-
-  try {
-    const resp = await fetch(cssUrl, {
-      headers: {
-        // Request TTF format (supported by opentype.js)
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
-      },
-    });
-    if (!resp.ok) return null;
-
-    const css = await resp.text();
-    // Parse all url() references from the CSS
-    const urlMatches = [...css.matchAll(/url\(([^)]+)\)/g)];
-    const urls = urlMatches.map(m => m[1].replace(/['"]/g, ''));
-
-    // Also extract weight info from the CSS
-    const weightBlocks = [...css.matchAll(/@font-face\s*\{[^}]*font-weight:\s*(\d+)[^}]*url\(([^)]+)\)[^}]*\}/g)];
-    const weightMap = {};
-    weightBlocks.forEach(m => {
-      weightMap[m[1]] = m[2].replace(/['"]/g, '');
-    });
-
-    return {
-      urls,
-      weightMap,
-      // Prefer regular (400) weight, fallback to first available
-      defaultUrl: weightMap['400'] || weightMap['300'] || weightMap['500'] || urls[0] || null,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Load a font by name. Checks cache first, then fetches from Google Fonts.
- * Returns an opentype.js Font object.
- */
-async function loadGoogleFont(fontName) {
+function loadGoogleFont(fontName) {
   if (fontCache[fontName]) return fontCache[fontName];
 
-  const fontInfo = await fetchGoogleFontUrls(fontName);
-  if (!fontInfo || !fontInfo.defaultUrl) {
-    throw new Error(`Could not find font URL for: ${fontName}`);
+  const id = `gfont-${fontName.replace(/\s/g, '-')}`;
+  if (!document.getElementById(id)) {
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName)}:wght@100;300;400;500;700;900&display=swap`;
+    document.head.appendChild(link);
   }
 
-  // Fetch the actual font file
-  const fontResp = await fetch(fontInfo.defaultUrl);
-  if (!fontResp.ok) throw new Error(`Failed to download font: ${fontName}`);
-
-  const buffer = await fontResp.arrayBuffer();
-
-  // Parse with opentype.js
-  if (typeof opentype === 'undefined') {
-    throw new Error('opentype.js not loaded');
-  }
-  const font = opentype.parse(buffer);
-
-  fontCache[fontName] = {
-    opentype: font,
+  const fontData = {
     family: fontName,
-    url: fontInfo.defaultUrl,
-    weightMap: fontInfo.weightMap,
+    source: 'google',
+    opentype: null, // no glyph-level data; canvas-blend & css-overlay work via CSS
   };
 
-  return fontCache[fontName];
+  fontCache[fontName] = fontData;
+  return fontData;
 }
 
 /**
  * Load a font from a user-uploaded file.
- * Returns { opentype, family, name }.
+ * Parses with opentype.js for full glyph-level access.
  */
 async function loadFontFile(file) {
   const buffer = await file.arrayBuffer();
@@ -109,14 +67,15 @@ async function loadFontFile(file) {
   const family = font.names.fontFamily?.en || file.name.replace(/\.\w+$/, '');
   const cacheKey = `upload:${family}:${file.name}`;
 
-  fontCache[cacheKey] = {
+  const fontData = {
     opentype: font,
     family,
-    url: null,
+    source: 'upload',
     fileName: file.name,
   };
 
-  return fontCache[cacheKey];
+  fontCache[cacheKey] = fontData;
+  return fontData;
 }
 
 /**
@@ -139,7 +98,6 @@ function addUploadedFontToSelect(selectEl, cacheKey, displayName) {
   opt.value = cacheKey;
   opt.textContent = `${displayName} (uploaded)`;
   opt.selected = true;
-  // Insert after the placeholder
   if (selectEl.options.length > 1) {
     selectEl.insertBefore(opt, selectEl.options[1]);
   } else {
@@ -148,7 +106,7 @@ function addUploadedFontToSelect(selectEl, cacheKey, displayName) {
 }
 
 /**
- * Get a loaded font by its cache key (Google Font name or upload key).
+ * Get a loaded font by its cache key.
  */
 function getFont(key) {
   return fontCache[key] || null;
@@ -156,44 +114,30 @@ function getFont(key) {
 
 /**
  * Render a preview of a font into a DOM element.
- * Uses Google Fonts CSS for display if available, else falls back to canvas.
+ * Google Fonts use CSS font-family; uploaded fonts use canvas.
  */
 function renderPreview(fontData, element, text = 'AaBbCcDd') {
   if (!fontData) return;
 
-  if (fontData.url) {
-    // Google Font — load via CSS @font-face
-    const style = document.createElement('style');
-    style.textContent = `@font-face { font-family: "${fontData.family}-preview"; src: url("${fontData.url}"); }`;
-    document.head.appendChild(style);
-    element.style.fontFamily = `"${fontData.family}-preview", sans-serif`;
+  if (fontData.source === 'google') {
+    element.style.fontFamily = `"${fontData.family}", sans-serif`;
     element.textContent = text;
   } else if (fontData.opentype) {
     // Uploaded font — render via canvas
-    // Clear previous content safely
     while (element.firstChild) element.removeChild(element.firstChild);
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const fontSize = 40;
-    const path = fontData.opentype.getPath(text, 0, fontSize, fontSize);
+    const path = fontData.opentype.getPath(text, 10, fontSize + 5, fontSize);
     const bbox = path.getBoundingBox();
 
     canvas.width = Math.max(bbox.x2 - bbox.x1 + 20, 200);
     canvas.height = fontSize + 20;
     canvas.style.maxWidth = '100%';
 
-    const ctxBg = 'transparent';
-    ctx.fillStyle = ctxBg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     ctx.fillStyle = '#e8e8f0';
-    const offsetX = -bbox.x1 + 10;
-    const offsetY = -bbox.y1 + 5;
-
-    // Re-render with offset
-    const shiftedPath = fontData.opentype.getPath(text, offsetX, fontSize + offsetY - bbox.y2 + bbox.y1, fontSize);
-    shiftedPath.fill = '#e8e8f0';
-    shiftedPath.draw(ctx);
+    path.fill = '#e8e8f0';
+    path.draw(ctx);
 
     element.appendChild(canvas);
   }

@@ -95,7 +95,7 @@ function init() {
 
 // ─── FONT SELECTION ─────────────────────────────────────────────
 
-async function handleFontSelectChange(side) {
+function handleFontSelectChange(side) {
   const select = side === 'a' ? fontASelect : fontBSelect;
   const preview = side === 'a' ? previewA : previewB;
   const value = select.value;
@@ -106,43 +106,22 @@ async function handleFontSelectChange(side) {
     return;
   }
 
-  showStatus(`Loading ${value}...`);
-  try {
-    const fontData = await loadGoogleFont(value);
-    if (side === 'a') {
-      state.fontA = fontData;
-      state.fontAKey = value;
-    } else {
-      state.fontB = fontData;
-      state.fontBKey = value;
-    }
-
-    // Render preview
-    renderPreview(fontData, preview);
-
-    // Also load the font for CSS rendering via a link tag
-    loadGoogleFontCSS(value);
-
-    showStatus(`Loaded: ${value}`);
-    setTimeout(hideStatus, 2000);
-  } catch (err) {
-    showStatus(`Error loading ${value}: ${err.message}`);
+  // Google Fonts load synchronously via CSS <link> (no CORS issues)
+  const fontData = loadGoogleFont(value);
+  if (side === 'a') {
+    state.fontA = fontData;
+    state.fontAKey = value;
+  } else {
+    state.fontB = fontData;
+    state.fontBKey = value;
   }
+
+  // Render preview
+  renderPreview(fontData, preview);
+
+  showStatus(`Selected: ${value}`);
+  setTimeout(hideStatus, 2000);
   updateMixButton();
-}
-
-/**
- * Load a Google Font via CSS <link> for rendering in DOM elements.
- */
-function loadGoogleFontCSS(fontName) {
-  const id = `gfont-${fontName.replace(/\s/g, '-')}`;
-  if (document.getElementById(id)) return;
-
-  const link = document.createElement('link');
-  link.id = id;
-  link.rel = 'stylesheet';
-  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName)}:wght@100;300;400;500;700;900&display=swap`;
-  document.head.appendChild(link);
 }
 
 async function handleFileUpload(side, event) {
@@ -191,6 +170,13 @@ async function doMix() {
   document.body.classList.add('mixing');
   showStatus('Mixing fonts...');
 
+  // Wait for CSS fonts to be ready (Google Fonts load async via <link>)
+  if (document.fonts && document.fonts.ready) {
+    await document.fonts.ready;
+  } else {
+    await new Promise(r => setTimeout(r, 500));
+  }
+
   // Read parameters
   const ratio = parseInt(paramRatio.value) / 100;
   const weight = parseInt(paramWeight.value) / 100;
@@ -220,15 +206,19 @@ async function doMix() {
       const overlay = createCssOverlay(text, familyA, familyB, ratio, fontSize);
       outputPreview.appendChild(overlay);
 
-    } else if (mode === 'canvas-blend') {
-      // Canvas pixel blending
-      const canvas = canvasBlendText(state.fontA, state.fontB, text, fontSize, ratio, options);
+    } else if (mode === 'glyph-interp' && state.fontA.opentype && state.fontB.opentype) {
+      // Glyph interpolation mode (requires opentype data from uploaded fonts)
+      const canvas = renderInterpolatedText(state.fontA, state.fontB, text, fontSize, ratio, options);
       canvas.style.maxWidth = '100%';
       outputPreview.appendChild(canvas);
 
     } else {
-      // Glyph interpolation mode
-      const canvas = renderInterpolatedText(state.fontA, state.fontB, text, fontSize, ratio, options);
+      // Canvas pixel blending (works with any font source)
+      // Also used as fallback when glyph-interp is selected but no opentype data
+      if (mode === 'glyph-interp') {
+        showStatus('Glyph interpolation needs uploaded .ttf fonts — using canvas blend instead');
+      }
+      const canvas = canvasBlendText(state.fontA, state.fontB, text, fontSize, ratio, options);
       canvas.style.maxWidth = '100%';
       outputPreview.appendChild(canvas);
     }

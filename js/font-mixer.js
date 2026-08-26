@@ -118,6 +118,38 @@ function interpolatePaths(pathA, pathB, ratio) {
 // ─── CANVAS PIXEL BLENDING ──────────────────────────────────────
 
 /**
+ * Draw a single character on a canvas context.
+ * Uses opentype.js paths when available, otherwise CSS fillText.
+ */
+function drawChar(ctx, fontData, char, fontSize, widthStretch, padding) {
+  ctx.save();
+  if (fontData && fontData.opentype) {
+    // Glyph-level rendering via opentype.js
+    if (widthStretch !== 1.0) {
+      ctx.transform(widthStretch, 0, 0, 1, padding, 0);
+    } else {
+      ctx.translate(padding, 0);
+    }
+    const path = fontData.opentype.getPath(char, 0, fontSize, fontSize);
+    ctx.fillStyle = '#ffffff';
+    path.fill = '#ffffff';
+    path.draw(ctx);
+  } else if (fontData) {
+    // CSS font rendering (Google Fonts loaded via <link>)
+    ctx.font = `${fontSize}px "${fontData.family}", sans-serif`;
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'alphabetic';
+    const xOffset = widthStretch !== 1.0 ? padding : padding;
+    ctx.translate(xOffset, 0);
+    if (widthStretch !== 1.0) {
+      ctx.transform(widthStretch, 0, 0, 1, 0, 0);
+    }
+    ctx.fillText(char, 0, fontSize);
+  }
+  ctx.restore();
+}
+
+/**
  * Render a character using both fonts and blend the pixel data.
  * Returns a canvas element with the blended result.
  */
@@ -131,41 +163,13 @@ function canvasBlendChar(fontA, fontB, char, fontSize, ratio, options = {}) {
   const canvasA = document.createElement('canvas');
   canvasA.width = w; canvasA.height = h;
   const ctxA = canvasA.getContext('2d');
+  drawChar(ctxA, fontA, char, fontSize, widthStretch, padding);
 
   // Render font B
   const canvasB = document.createElement('canvas');
   canvasB.width = w; canvasB.height = h;
   const ctxB = canvasB.getContext('2d');
-
-  // Draw glyph A using opentype.js
-  if (fontA && fontA.opentype) {
-    ctxA.save();
-    if (widthStretch !== 1.0) {
-      ctxA.transform(widthStretch, 0, 0, 1, padding, 0);
-    } else {
-      ctxA.translate(padding, 0);
-    }
-    const pathA = fontA.opentype.getPath(char, 0, fontSize, fontSize);
-    ctxA.fillStyle = '#ffffff';
-    pathA.fill = '#ffffff';
-    pathA.draw(ctxA);
-    ctxA.restore();
-  }
-
-  // Draw glyph B
-  if (fontB && fontB.opentype) {
-    ctxB.save();
-    if (widthStretch !== 1.0) {
-      ctxB.transform(widthStretch, 0, 0, 1, padding, 0);
-    } else {
-      ctxB.translate(padding, 0);
-    }
-    const pathB = fontB.opentype.getPath(char, 0, fontSize, fontSize);
-    ctxB.fillStyle = '#ffffff';
-    pathB.fill = '#ffffff';
-    pathB.draw(ctxB);
-    ctxB.restore();
-  }
+  drawChar(ctxB, fontB, char, fontSize, widthStretch, padding);
 
   // Blend pixels
   const dataA = ctxA.getImageData(0, 0, w, h);
@@ -250,9 +254,12 @@ function canvasBlendText(fontA, fontB, text, fontSize, ratio, options = {}) {
 
 /**
  * Interpolate a single glyph between two fonts.
- * Uses path-level interpolation when possible.
+ * Uses path-level interpolation when both fonts have opentype data.
+ * Returns null if either font lacks opentype data (caller should fall back).
  */
 function interpolateGlyph(fontA, fontB, char, fontSize, ratio) {
+  if (!fontA.opentype || !fontB.opentype) return null;
+
   const glyphA = fontA.opentype.charToGlyph(char);
   const glyphB = fontB.opentype.charToGlyph(char);
 
@@ -348,7 +355,12 @@ function renderGlyphCell(fontA, fontB, char, size, ratio, mode) {
     return canvasBlendChar(fontA, fontB, char, fontSize, ratio, {});
   }
 
-  // glyph-interp mode
+  // glyph-interp mode — needs opentype data
+  if (!fontA.opentype || !fontB.opentype) {
+    // Fallback: render via CSS fillText blended
+    return canvasBlendChar(fontA, fontB, char, fontSize, ratio, {});
+  }
+
   const canvas = document.createElement('canvas');
   canvas.width = cellSize;
   canvas.height = cellSize;
