@@ -255,15 +255,6 @@ function renderPreview(fontData, element, text = 'AaBbCcDd') {
   }
 }
 
-export {
-  GOOGLE_FONTS,
-  loadGoogleFont,
-  loadFontFile,
-  loadAllGoogleFontsCSS,
-  buildCustomFontDropdown,
-  initCloseDropdowns,
-  addUploadedFontToSelect,
-  getFont,
-  renderPreview,
-  fontCache,
-};
+// Classic script (no ES modules): all declarations above are
+// shared in the global scope with font-mixer.js and app.js,
+// so the app also works when opened directly via file://.

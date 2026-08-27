@@ -4,26 +4,15 @@
  * Handles UI events, font selection, mixing, and preview rendering.
  */
 
-import {
-  loadGoogleFont,
-  loadFontFile,
-  loadAllGoogleFontsCSS,
-  buildCustomFontDropdown,
-  initCloseDropdowns,
-  addUploadedFontToSelect,
-  getFont,
-  renderPreview,
-  fontCache,
-  GOOGLE_FONTS,
-} from './font-loader.js';
-
-import {
-  canvasBlendText,
-  renderInterpolatedText,
-  renderGlyphCell,
-  createCssOverlay,
-  interpolateGlyph,
-} from './font-mixer.js';
+// Classic scripts (no ES modules): the functions below come from
+// font-loader.js and font-mixer.js, loaded first via <script> tags
+// and shared through the global scope. This lets the app run
+// directly from file:// without a web server.
+//   Font loading:   loadGoogleFont, loadFontFile, loadAllGoogleFontsCSS,
+//                   buildCustomFontDropdown, initCloseDropdowns,
+//                   addUploadedFontToSelect, renderPreview, GOOGLE_FONTS
+//   Font mixing:    canvasBlendText, renderInterpolatedText, renderGlyphCell,
+//                   createCssOverlay, interpolateGlyph
 
 // ─── STATE ──────────────────────────────────────────────────────
 

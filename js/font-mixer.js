@@ -423,12 +423,6 @@ function createCssOverlay(text, familyA, familyB, ratio, fontSize) {
   return container;
 }
 
-export {
-  interpolatePaths,
-  canvasBlendChar,
-  canvasBlendText,
-  interpolateGlyph,
-  renderInterpolatedText,
-  renderGlyphCell,
-  createCssOverlay,
-};
+// Classic script (no ES modules): all declarations above are
+// shared in the global scope with font-loader.js and app.js,
+// so the app also works when opened directly via file://.
