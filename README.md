@@ -21,6 +21,12 @@ fontMixer is a web-based tool that lets you mix two fonts together and create un
   - Smoothness
 - **Live preview** — Type any text and see the mixed result instantly
 - **Glyph grid** — Inspect individual character cells of the mixed output
+- **Save Mixed Font** — Export the result as:
+  - **PNG image** — the mixed preview as a raster image
+  - **SVG vector** — mixed glyph outlines as scalable paths
+  - **Font file (.otf)** — a real installable font file (glyph data is fetched
+    automatically for Google Fonts — no manual downloads or uploads needed).
+    opentype.js writes CFF-based OpenType; install on Windows via right-click → Install
 
 ## How It Works
 
@@ -75,7 +81,7 @@ fontMixer/
 
 ## Roadmap
 
-- [ ] Export mixed font as downloadable `.ttf` file
+- [x] Export mixed font as installable font file (auto-fetches Google Font glyph data)
 - [ ] Multi-font mixing (3+ fonts)
 - [ ] Per-character mix ratio control
 - [ ] Save/load mix presets

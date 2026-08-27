@@ -3,8 +3,10 @@
  * Handles loading fonts from Google Fonts and user file uploads.
  *
  * Google Fonts are loaded via CSS <link> tag (no CORS issues).
- * Opentype.js parsing is used only for uploaded .ttf/.otf files
- * (enables glyph-level interpolation).
+ * For glyph-level work (interpolation + TTF export), the raw font
+ * binary is fetched from @fontsource on jsDelivr: it serves plain
+ * WOFF (which opentype.js can parse), unlike fonts.googleapis.com
+ * which serves WOFF2 (which opentype.js cannot parse).
  */
 
 // Curated Google Fonts list (popular, diverse set for mixing)
@@ -50,6 +52,49 @@ function loadGoogleFont(fontName) {
 
   fontCache[fontName] = fontData;
   return fontData;
+}
+
+// Packages whose @fontsource slug differs from the plain lowercase rule
+const FONTSOURCE_OVERRIDES = {
+  'Source Sans Pro': 'source-sans-pro',
+};
+
+/**
+ * Fetch the raw font binary for a Google Font so glyph-level
+ * interpolation and TTF export work without any manual downloads.
+ * jsDelivr serves @fontsource files with CORS enabled.
+ * The result is cached on the fontData object; safe to call repeatedly.
+ */
+async function fetchGoogleFontBinary(fontData) {
+  if (!fontData || fontData.source !== 'google') return fontData;
+  if (fontData.opentype || fontData.binaryFailed) return fontData;
+  if (fontData.binaryPromise) return fontData.binaryPromise;
+
+  const slug = FONTSOURCE_OVERRIDES[fontData.family] ||
+    fontData.family.toLowerCase().replace(/\s+/g, '-');
+  const url = `https://cdn.jsdelivr.net/npm/@fontsource/${slug}/files/${slug}-latin-400-normal.woff`;
+
+  fontData.binaryPromise = (async () => {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const buffer = await resp.arrayBuffer();
+
+      if (typeof opentype === 'undefined') {
+        throw new Error('opentype.js not loaded');
+      }
+
+      fontData.opentype = opentype.parse(buffer);
+    } catch (err) {
+      fontData.binaryFailed = true;
+      console.warn(`Could not fetch glyph data for ${fontData.family}: ${err.message}`);
+    } finally {
+      fontData.binaryPromise = null;
+    }
+    return fontData;
+  })();
+
+  return fontData.binaryPromise;
 }
 
 /**

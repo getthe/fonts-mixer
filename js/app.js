@@ -124,6 +124,10 @@ function handleFontSelectChange(side) {
     state.fontBKey = value;
   }
 
+  // Kick off a background fetch of the font binary (enables
+  // glyph interpolation and TTF export — no manual download needed)
+  fetchGoogleFontBinary(fontData).catch(() => {});
+
   // Render preview
   renderPreview(fontData, preview);
 
@@ -195,6 +199,16 @@ async function doMix() {
   const mode = paramMode.value;
   const text = sampleText.value || 'The quick brown fox jumps over the lazy dog';
 
+  // For glyph interpolation, make sure font binaries have arrived
+  // (fetched in the background when the fonts were selected)
+  if (mode === 'glyph-interp' && (!state.fontA.opentype || !state.fontB.opentype)) {
+    showStatus('Fetching font glyph data...');
+    const jobs = [state.fontA, state.fontB]
+      .filter(f => f && f.source === 'google' && !f.opentype && !f.binaryFailed)
+      .map(f => fetchGoogleFontBinary(f).catch(() => {}));
+    await Promise.all(jobs);
+  }
+
   state.lastParams = { ratio, weight, widthStretch, spacing, smoothness, mode, text };
 
   // Use requestAnimationFrame to let the UI update before heavy work
@@ -216,16 +230,17 @@ async function doMix() {
       outputPreview.appendChild(overlay);
 
     } else if (mode === 'glyph-interp' && state.fontA.opentype && state.fontB.opentype) {
-      // Glyph interpolation mode (requires opentype data from uploaded fonts)
+      // Glyph interpolation mode (font binaries fetched automatically)
       const canvas = renderInterpolatedText(state.fontA, state.fontB, text, fontSize, ratio, options);
       canvas.style.maxWidth = '100%';
       outputPreview.appendChild(canvas);
 
     } else {
       // Canvas pixel blending (works with any font source)
-      // Also used as fallback when glyph-interp is selected but no opentype data
+      // Also used as fallback when glyph-interp is selected but glyph
+      // data could not be fetched for one of the fonts
       if (mode === 'glyph-interp') {
-        showStatus('Glyph interpolation needs uploaded .ttf fonts — using canvas blend instead');
+        showStatus('Glyph data unavailable for one font — using canvas blend instead');
       }
       const canvas = canvasBlendText(state.fontA, state.fontB, text, fontSize, ratio, options);
       canvas.style.maxWidth = '100%';
@@ -379,14 +394,25 @@ function exportAsSVG() {
 }
 
 /**
- * Export a real .ttf font file using opentype.js.
- * Requires both source fonts to be uploaded .ttf/.otf files.
+ * Export a real installable font file using opentype.js.
+ * Font binaries are fetched automatically for Google Fonts,
+ * so this works directly from dropdown selections.
+ * Note: opentype.js always writes CFF-based OpenType (OTF format).
  */
-function exportAsTTF() {
+async function exportAsTTF() {
   saveGroup.classList.remove('open');
 
+  // Auto-fetch any missing glyph data (Google Fonts)
   if (!state.fontA?.opentype || !state.fontB?.opentype) {
-    showStatus('TTF export requires both fonts to be uploaded .ttf/.otf files (Google Fonts cannot be repackaged)');
+    showStatus('Fetching font glyph data for TTF export...');
+    const jobs = [state.fontA, state.fontB]
+      .filter(f => f && f.source === 'google' && !f.opentype)
+      .map(f => fetchGoogleFontBinary(f).catch(() => {}));
+    await Promise.all(jobs);
+  }
+
+  if (!state.fontA?.opentype || !state.fontB?.opentype) {
+    showStatus('Glyph data unavailable for one or both fonts — upload the .ttf/.otf files manually for these');
     setTimeout(hideStatus, 5000);
     return;
   }
@@ -412,41 +438,55 @@ function exportAsTTF() {
 
   const glyphs = [notdefGlyph];
 
+  // Normalize advance widths across fonts with different unitsPerEm
+  const upmA = state.fontA.opentype.unitsPerEm || 1000;
+  const upmB = state.fontB.opentype.unitsPerEm || 1000;
+
   for (const char of chars) {
     try {
+      // Interpolated advance width (real metrics, not a fixed guess)
+      const gA = state.fontA.opentype.charToGlyph(char);
+      const gB = state.fontB.opentype.charToGlyph(char);
+      const normA = gA.advanceWidth ? gA.advanceWidth / upmA : 0.6;
+      const normB = gB.advanceWidth ? gB.advanceWidth / upmB : 0.6;
+      const advanceWidth = Math.max(1, Math.round((normA * (1 - ratio) + normB * ratio) * unitsPerEm));
+
       const path = interpolateGlyph(state.fontA, state.fontB, char, unitsPerEm, ratio);
-      if (path && path.commands && path.commands.length > 0) {
-        // Flip Y axis (opentype fonts use Y-up coordinate system)
-        const flippedCmds = path.commands.map(cmd => {
-          const nc = { type: cmd.type };
-          if (cmd.x !== undefined) nc.x = cmd.x;
-          if (cmd.y !== undefined) nc.y = -cmd.y;
-          if (cmd.x1 !== undefined) nc.x1 = cmd.x1;
-          if (cmd.y1 !== undefined) nc.y1 = -cmd.y1;
-          if (cmd.x2 !== undefined) nc.x2 = cmd.x2;
-          if (cmd.y2 !== undefined) nc.y2 = -cmd.y2;
-          return nc;
-        });
+      const isEmpty = !path || !path.commands || path.commands.length === 0;
 
-        const opPath = new opentype.Path();
-        for (const cmd of flippedCmds) {
-          switch (cmd.type) {
-            case 'M': opPath.moveTo(cmd.x, cmd.y); break;
-            case 'L': opPath.lineTo(cmd.x, cmd.y); break;
-            case 'Q': opPath.quadraticCurveTo(cmd.x1, cmd.y1, cmd.x, cmd.y); break;
-            case 'C': opPath.bezierCurveTo(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y); break;
-            case 'Z': opPath.close(); break;
-          }
+      // Space has no outline but still needs an advance width;
+      // other empty glyphs are skipped
+      if (isEmpty && char !== ' ') continue;
+
+      const flippedCmds = isEmpty ? [] : path.commands.map(cmd => {
+        const nc = { type: cmd.type };
+        if (cmd.x !== undefined) nc.x = cmd.x;
+        if (cmd.y !== undefined) nc.y = -cmd.y;
+        if (cmd.x1 !== undefined) nc.x1 = cmd.x1;
+        if (cmd.y1 !== undefined) nc.y1 = cmd.y1;
+        if (cmd.x2 !== undefined) nc.x2 = cmd.x2;
+        if (cmd.y2 !== undefined) nc.y2 = cmd.y2;
+        return nc;
+      });
+
+      const opPath = new opentype.Path();
+      for (const cmd of flippedCmds) {
+        switch (cmd.type) {
+          case 'M': opPath.moveTo(cmd.x, cmd.y); break;
+          case 'L': opPath.lineTo(cmd.x, cmd.y); break;
+          case 'Q': opPath.quadraticCurveTo(cmd.x1, cmd.y1, cmd.x, cmd.y); break;
+          case 'C': opPath.bezierCurveTo(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y); break;
+          case 'Z': opPath.close(); break;
         }
-
-        const glyph = new opentype.Glyph({
-          name: char === ' ' ? 'space' : `uni${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`,
-          unicode: char.charCodeAt(0),
-          advanceWidth: Math.round(unitsPerEm * 0.6),
-          path: opPath,
-        });
-        glyphs.push(glyph);
       }
+
+      const glyph = new opentype.Glyph({
+        name: char === ' ' ? 'space' : `uni${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`,
+        unicode: char.charCodeAt(0),
+        advanceWidth: advanceWidth,
+        path: opPath,
+      });
+      glyphs.push(glyph);
     } catch {
       // Skip characters that fail
     }
@@ -463,13 +503,13 @@ function exportAsTTF() {
     });
 
     const buffer = mixedFont.toArrayBuffer();
-    const blob = new Blob([buffer], { type: 'font/ttf' });
-    downloadBlob(blob, getMixFilename('ttf'));
-    showStatus(`Saved TTF with ${glyphs.length - 1} mixed glyphs`);
+    const blob = new Blob([buffer], { type: 'font/otf' });
+    downloadBlob(blob, getMixFilename('otf'));
+    showStatus(`Saved font file with ${glyphs.length - 1} mixed glyphs — right-click it and choose Install`);
     setTimeout(hideStatus, 4000);
   } catch (err) {
-    showStatus(`TTF export error: ${err.message}`);
-    console.error('TTF export error:', err);
+    showStatus(`Font export error: ${err.message}`);
+    console.error('Font export error:', err);
     setTimeout(hideStatus, 5000);
   }
 }
